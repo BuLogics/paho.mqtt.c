@@ -231,6 +231,42 @@ long MQTTAsync_elapsed(struct timeval start)
 #endif
 
 
+
+// Add random amount of jitter for exponential backoff on retry
+// https://www.awsarchitectureblog.com/2015/03/backoff.html
+// http://ee.lbl.gov/papers/sync_94.pdf
+int MQTTAsync_randomJitter(int currentIntervalBase, int minInterval, int maxInterval)
+{
+	int max_sleep = min(maxInterval, currentIntervalBase);
+	int min_sleep = max(minInterval, currentIntervalBase / 2);
+
+	if (min_sleep >= max_sleep)
+	{
+		return min_sleep;
+	}
+
+	// random_between(min_sleep, max_sleep)
+	int r;
+	int range = max_sleep - min_sleep + 1;
+	if (range > RAND_MAX)
+	{
+		range = RAND_MAX;
+	}
+
+	int buckets = RAND_MAX / range;
+	int limit = buckets * range;
+
+	/* Create equal size buckets all in a row, then fire randomly towards
+	 * the buckets until you land in one of them. All buckets are equally
+	 * likely. If you land off the end of the line of buckets, try again. */
+	do
+	{
+			r = rand();
+	} while (r >= limit);
+
+	return min_sleep + (r / buckets);
+}
+
 typedef struct
 {
 	MQTTAsync_message* msg;
@@ -321,6 +357,7 @@ typedef struct MQTTAsync_struct
 	int connectTimeout;
 
 	int currentInterval;
+	int currentIntervalBase;
 	START_TIME_TYPE lastConnectionFailedTime;
 	int retrying;
 	int reconnectNow;
@@ -497,6 +534,9 @@ exit:
 int MQTTAsync_create(MQTTAsync* handle, const char* serverURI, const char* clientId,
 		int persistence_type, void* persistence_context)
 {
+	START_TIME_TYPE now = MQTTAsync_start_clock();
+	srandom(now.tv_usec);
+
 	return MQTTAsync_createWithOptions(handle, serverURI, clientId, persistence_type,
 		persistence_context, NULL);
 }
@@ -845,11 +885,15 @@ void MQTTAsync_startConnectRetry(MQTTAsyncs* m)
 	if (m->automaticReconnect && m->shouldBeConnected)
 	{
 		m->lastConnectionFailedTime = MQTTAsync_start_clock();
-		if (m->retrying)
-			m->currentInterval = min(m->currentInterval * 2, m->maxRetryInterval);
+		if (m->retrying) {
+			m->currentIntervalBase = min(m->currentIntervalBase * 2, m->maxRetryInterval);
+			m->currentInterval = MQTTAsync_randomJitter(m->currentIntervalBase, 
+					m->minRetryInterval, m->maxRetryInterval);
+		}
 		else
 		{
-			m->currentInterval = m->minRetryInterval;
+			m->currentIntervalBase = m->minRetryInterval;
+			m->currentInterval = MQTTAsync_randomJitter(m->minRetryInterval * 2, m->minRetryInterval, m->maxRetryInterval);
 			m->retrying = 1;
 		}
 	}
@@ -871,6 +915,7 @@ int MQTTAsync_reconnect(MQTTAsync handle)
 			m->reconnectNow = 1;
 	  		if (m->retrying == 0)
 	  		{
+	  			m->currentIntervalBase = m->minRetryInterval;
 	  			m->currentInterval = m->minRetryInterval;
 	  			m->retrying = 1;
 	  		}
