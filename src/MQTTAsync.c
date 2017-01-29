@@ -233,19 +233,21 @@ long MQTTAsync_elapsed(struct timeval start)
 
 
 // Add random amount of jitter for exponential backoff on retry
+// Jitter value will be +/- 20% of "base" interval, including max interval
 // https://www.awsarchitectureblog.com/2015/03/backoff.html
 // http://ee.lbl.gov/papers/sync_94.pdf
 int MQTTAsync_randomJitter(int currentIntervalBase, int minInterval, int maxInterval)
 {
-	int max_sleep = min(maxInterval, currentIntervalBase);
-	int min_sleep = max(minInterval, currentIntervalBase / 2);
+	int max_sleep = min(maxInterval, currentIntervalBase) * 1.2; // (e.g. 72 if base > 60)
+	int min_sleep = min(maxInterval, currentIntervalBase) / 1.2; // (e.g. 48 if base > 60)
 
-	if (min_sleep >= max_sleep)
+	if (min_sleep >= max_sleep) // shouldn't happen
 	{
 		return min_sleep;
 	}
 
 	// random_between(min_sleep, max_sleep)
+	// http://stackoverflow.com/questions/2509679/how-to-generate-a-random-number-from-within-a-range
 	int r;
 	int range = max_sleep - min_sleep + 1;
 	if (range > RAND_MAX)
@@ -261,11 +263,13 @@ int MQTTAsync_randomJitter(int currentIntervalBase, int minInterval, int maxInte
 	 * likely. If you land off the end of the line of buckets, try again. */
 	do
 	{
-			r = rand();
+		r = rand();
 	} while (r >= limit);
 
-	return min_sleep + (r / buckets);
+	int randResult = r / buckets;
+	return min_sleep + randResult;
 }
+
 
 typedef struct
 {
@@ -350,11 +354,11 @@ typedef struct MQTTAsync_struct
 
 	/* added for automatic reconnect */
 	int automaticReconnect;
-	int minRetryInterval;
+	int minRetryInterval; // In milliseconds
 	int maxRetryInterval;
 	int serverURIcount;
 	char** serverURIs;
-	int connectTimeout;
+	int connectTimeout; // In milliseconds
 
 	int currentInterval;
 	int currentIntervalBase;
@@ -887,15 +891,14 @@ void MQTTAsync_startConnectRetry(MQTTAsyncs* m)
 		m->lastConnectionFailedTime = MQTTAsync_start_clock();
 		if (m->retrying) {
 			m->currentIntervalBase = min(m->currentIntervalBase * 2, m->maxRetryInterval);
-			m->currentInterval = MQTTAsync_randomJitter(m->currentIntervalBase, 
-					m->minRetryInterval, m->maxRetryInterval);
 		}
 		else
 		{
 			m->currentIntervalBase = m->minRetryInterval;
-			m->currentInterval = MQTTAsync_randomJitter(m->minRetryInterval * 2, m->minRetryInterval, m->maxRetryInterval);
 			m->retrying = 1;
 		}
+
+		m->currentInterval = MQTTAsync_randomJitter(m->currentIntervalBase, m->minRetryInterval, m->maxRetryInterval);
 	}
 }
 
@@ -1380,7 +1383,7 @@ void MQTTAsync_checkTimeouts()
 				memset(conn, '\0', sizeof(MQTTAsync_queuedCommand));
 				conn->client = m;
 				conn->command = m->connect;
-				Log(TRACE_MIN, -1, "Connect failed with timeout, more to try");
+				Log(LOG_INFO, -1, "Connect failed with timeout, more to try");
 				MQTTAsync_addCommand(conn, sizeof(m->connect));
 			}
 			else
@@ -1393,7 +1396,7 @@ void MQTTAsync_checkTimeouts()
 					data.token = 0;
 					data.code = MQTTASYNC_FAILURE;
 					data.message = "TCP connect timeout";
-					Log(TRACE_MIN, -1, "Calling connect failure for client %s", m->c->clientID);
+					Log(LOG_INFO, -1, "Calling connect failure for client %s", m->c->clientID);
 					(*(m->connect.onFailure))(m->connect.context, &data);
 				}
 				MQTTAsync_startConnectRetry(m);
@@ -1429,7 +1432,7 @@ void MQTTAsync_checkTimeouts()
 
 		if (m->automaticReconnect && m->retrying)
 		{
-			if (m->reconnectNow || MQTTAsync_elapsed(m->lastConnectionFailedTime) > (m->currentInterval * 1000))
+			if (m->reconnectNow || MQTTAsync_elapsed(m->lastConnectionFailedTime) > (m->currentInterval))
 			{
 				/* to reconnect put the connect command to the head of the command queue */
 				MQTTAsync_queuedCommand* conn = malloc(sizeof(MQTTAsync_queuedCommand));
@@ -1439,7 +1442,7 @@ void MQTTAsync_checkTimeouts()
 	  			/* make sure that the version attempts are restarted */
 				if (m->c->MQTTVersion == MQTTVERSION_DEFAULT) 
 					conn->command.details.conn.MQTTVersion = 0;
-				Log(TRACE_MIN, -1, "Automatically attempting to reconnect");
+				Log(LOG_INFO, -1, "Automatically attempting to reconnect after %d milliseconds", m->currentInterval);
 				MQTTAsync_addCommand(conn, sizeof(m->connect));
 				m->reconnectNow = 0;
 			}
