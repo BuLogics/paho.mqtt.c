@@ -61,6 +61,7 @@ typedef struct
 
 extern trace_settings_type trace_settings;
 
+#define LOG_INFO LOG_INFO
 #define LOG_PROTOCOL TRACE_PROTOCOL
 #define TRACE_MAX TRACE_MAXIMUM
 #define TRACE_MIN TRACE_MINIMUM

@@ -150,19 +150,39 @@ int Log_initialize(Log_nameValue* info)
 	}
 	if ((envval = getenv("MQTT_C_CLIENT_TRACE_LEVEL")) != NULL && strlen(envval) > 0)
 	{
+		snprintf(msg_buf, sizeof(msg_buf), "MQTT_C_CLIENT_TRACE_LEVEL = %s", envval);
+		Log_output(TRACE_MINIMUM, msg_buf);
 		if (strcmp(envval, "MAXIMUM") == 0 || strcmp(envval, "TRACE_MAXIMUM") == 0)
-			trace_settings.trace_level = TRACE_MAXIMUM;
+			Log_setTraceLevel(TRACE_MAXIMUM);
 		else if (strcmp(envval, "MEDIUM") == 0 || strcmp(envval, "TRACE_MEDIUM") == 0)
-			trace_settings.trace_level = TRACE_MEDIUM;
+			Log_setTraceLevel(TRACE_MEDIUM);
 		else if (strcmp(envval, "MINIMUM") == 0 || strcmp(envval, "TRACE_MEDIUM") == 0)
-			trace_settings.trace_level = TRACE_MINIMUM;
+			Log_setTraceLevel(TRACE_MINIMUM);
 		else if (strcmp(envval, "PROTOCOL") == 0  || strcmp(envval, "TRACE_PROTOCOL") == 0)
-			trace_output_level = TRACE_PROTOCOL;
+			Log_setTraceLevel(TRACE_PROTOCOL);
+		else if (strcmp(envval, "INFO") == 0  || strcmp(envval, "TRACE_INFO") == 0)
+			Log_setTraceLevel(LOG_INFO);
 		else if (strcmp(envval, "ERROR") == 0  || strcmp(envval, "TRACE_ERROR") == 0)
-			trace_output_level = LOG_ERROR;
+			Log_setTraceLevel(LOG_ERROR);
 	}
+
 	Log_output(TRACE_MINIMUM, "=========================================================");
 	Log_output(TRACE_MINIMUM, "                   Trace Output");
+	if (trace_output_level == LOG_INFO) {
+		Log_output(TRACE_MINIMUM, "Trace level: INFO");
+	} else if (trace_output_level == TRACE_MINIMUM) {
+		Log_output(TRACE_MINIMUM, "Trace level: MINIMUM");
+	} else if (trace_output_level == TRACE_MEDIUM) {
+		Log_output(TRACE_MINIMUM, "Trace level: MEDIUM");
+	} else if (trace_output_level == TRACE_MAXIMUM) {
+		Log_output(TRACE_MINIMUM, "Trace level: MAXIMUM");
+	} else {
+		snprintf(msg_buf, sizeof(msg_buf), "Trace output level: %d", trace_output_level);
+		Log_output(TRACE_MINIMUM, msg_buf);
+		snprintf(msg_buf, sizeof(msg_buf), "Trace settings level: %d", trace_settings.trace_level);
+		Log_output(TRACE_MINIMUM, msg_buf);
+	}
+
 	if (info)
 	{
 		while (info->name)
