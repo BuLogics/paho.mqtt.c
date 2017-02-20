@@ -1046,7 +1046,9 @@ typedef struct
       */
 	const char* password;
 	/**
-      * The time interval in seconds to allow a connect to complete.
+      * The time interval in milliseconds to allow a connect to complete.
+      * For backwards compatibility and consistency with the retry intervals
+      * this is considered to be seconds if it is under 1000.
       */
 	int connectTimeout;
 	/**
