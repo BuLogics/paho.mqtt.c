@@ -342,16 +342,16 @@ typedef struct MQTTAsync_struct
 	MQTTAsync_createOptions* createOptions;
 	int shouldBeConnected;
 
-	/* added for automatic reconnect */
+	/* added for automatic reconnect, intervals are in milliseconds */
 	int automaticReconnect;
-	int minRetryInterval;
-	int maxRetryInterval;
+	int minRetryIntervalMs;
+	int maxRetryIntervalMs;
 	int serverURIcount;
 	char** serverURIs;
-	int connectTimeout;
+	int connectTimeoutMs;
 
-	int currentInterval;
-	int currentIntervalBase;
+	int currentIntervalMs;
+	int currentIntervalBaseMs;
 	START_TIME_TYPE lastConnectionFailedTime;
 	int retrying;
 	int reconnectNow;
@@ -1061,21 +1061,21 @@ static int MQTTAsync_addCommand(MQTTAsync_queuedCommand* command, int command_si
 	return rc;
 }
 
-
+// Reconnect with exponential backoff (base * 2) after each failed attempt
 static void MQTTAsync_startConnectRetry(MQTTAsyncs* m)
 {
 	if (m->automaticReconnect && m->shouldBeConnected)
 	{
 		m->lastConnectionFailedTime = MQTTAsync_start_clock();
 		if (m->retrying) {
-			m->currentIntervalBase = min(m->currentIntervalBase * 2, m->maxRetryInterval);
+			m->currentIntervalBaseMs = min(m->currentIntervalBaseMs * 2, m->maxRetryIntervalMs);
 		}
 		else
 		{
-			m->currentIntervalBase = m->minRetryInterval;
+			m->currentIntervalBaseMs = m->minRetryIntervalMs;
 			m->retrying = 1;
 		}
-		m->currentInterval = MQTTAsync_randomJitter(m->currentIntervalBase, m->minRetryInterval, m->maxRetryInterval);
+		m->currentIntervalMs = MQTTAsync_randomJitter(m->currentIntervalBaseMs, m->minRetryIntervalMs, m->maxRetryIntervalMs);
 	}
 }
 
@@ -1093,13 +1093,13 @@ int MQTTAsync_reconnect(MQTTAsync handle)
 		if (m->shouldBeConnected)
 		{
 			m->reconnectNow = 1;
-	  		if (m->retrying == 0)
+			if (m->retrying == 0)
 	  		{
-	  			m->currentIntervalBase = m->minRetryInterval;
-	  			m->currentInterval = m->minRetryInterval;
-	  			m->retrying = 1;
-	  		}
-	  		rc = MQTTASYNC_SUCCESS;
+				m->currentIntervalBaseMs = m->minRetryIntervalMs;
+				m->currentIntervalMs = m->minRetryIntervalMs;
+				m->retrying = 1;
+			}
+			rc = MQTTASYNC_SUCCESS;
 		}
 	}
 	else
@@ -1802,7 +1802,7 @@ static void MQTTAsync_checkTimeouts(void)
 
 		if (m->automaticReconnect && m->retrying)
 		{
-			if (m->reconnectNow || MQTTAsync_elapsed(m->lastConnectionFailedTime) > (m->currentInterval * 1000))
+			if (m->reconnectNow || MQTTAsync_elapsed(m->lastConnectionFailedTime) > m->currentIntervalMs)
 			{
 				/* to reconnect put the connect command to the head of the command queue */
 				MQTTAsync_queuedCommand* conn = malloc(sizeof(MQTTAsync_queuedCommand));
@@ -1812,7 +1812,7 @@ static void MQTTAsync_checkTimeouts(void)
 	  			/* make sure that the version attempts are restarted */
 				if (m->c->MQTTVersion == MQTTVERSION_DEFAULT)
 					conn->command.details.conn.MQTTVersion = 0;
-				Log(TRACE_MIN, -1, "Automatically attempting to reconnect");
+				Log(LOG_PROTOCOL, -1, "Automatically attempting to reconnect after %d milliseconds", m->currentIntervalMs);
 				MQTTAsync_addCommand(conn, sizeof(m->connect));
 				m->reconnectNow = 0;
 			}
@@ -2861,8 +2861,7 @@ int MQTTAsync_connect(MQTTAsync handle, const MQTTAsync_connectOptions* options)
 		m->connect.onFailure5 = options->onFailure5;
 	}
 	m->connect.context = options->context;
-	m->connectTimeout = options->connectTimeout;
-
+	m->connectTimeoutMs = options->connectTimeout * 1000;
 	tostop = 0;
 	if (sendThread_state != STARTING && sendThread_state != RUNNING)
 	{
@@ -2890,8 +2889,27 @@ int MQTTAsync_connect(MQTTAsync handle, const MQTTAsync_connectOptions* options)
 	if (options->struct_version >= 4)
 	{
 		m->automaticReconnect = options->automaticReconnect;
-		m->minRetryInterval = options->minRetryInterval;
-		m->maxRetryInterval = options->maxRetryInterval;
+		// Old retry time params were in seconds, but we want to support
+		// millisecond min retry intervals.
+		// To remain backwards compatible, if the param is under 100, we
+		// assume it's in seconds, otherwise, milliseconds.
+		if (options->minRetryInterval < 100)
+		{
+			m->minRetryIntervalMs = options->minRetryInterval * 1000;
+		}
+		else
+		{
+			m->minRetryIntervalMs = options->minRetryInterval;
+		}
+		// Similar for max interval, if it's under 1000, we assume seconds
+		if (options->maxRetryInterval < 1000)
+		{
+			m->maxRetryIntervalMs = options->maxRetryInterval * 1000;
+		}
+		else
+		{
+			m->maxRetryIntervalMs = options->maxRetryInterval;
+		}
 	}
 
 	if (m->c->will)
@@ -3013,7 +3031,7 @@ int MQTTAsync_connect(MQTTAsync handle, const MQTTAsync_connectOptions* options)
 	m->c->retryInterval = options->retryInterval;
 	m->shouldBeConnected = 1;
 
-	m->connectTimeout = options->connectTimeout;
+	m->connectTimeoutMs = options->connectTimeout * 1000;
 
 	MQTTAsync_freeServerURIs(m);
 	if (options->struct_version >= 2 && options->serverURIcount > 0)
