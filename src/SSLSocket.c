@@ -68,15 +68,18 @@ int SSLSocket_error(char* aString, SSL* ssl, int sock, int rc)
         error = ERR_get_error();
     if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE)
     {
-		Log(TRACE_MIN, -1, "SSLSocket error WANT_READ/WANT_WRITE");
+      Log(TRACE_MIN, -1, "SSLSocket error WANT_READ/WANT_WRITE");
     }
     else
     {
         static char buf[120];
 
         if (strcmp(aString, "shutdown") != 0)
-        	Log(TRACE_MIN, -1, "SSLSocket error %s(%d) in %s for socket %d rc %d errno %d %s\n", buf, error, aString, sock, rc, errno, strerror(errno));
-         ERR_print_errors_fp(stderr);
+        {
+          Log(TRACE_PROTOCOL, -1, "SSLSocket error %s(%d) in %s for socket %d rc %d errno %d %s", buf, error, aString, sock, rc, errno, strerror(errno));
+        }
+
+        ERR_print_errors_fp(stderr);
 		if (error == SSL_ERROR_SSL || error == SSL_ERROR_SYSCALL)
 			error = SSL_FATAL;
     }
@@ -481,6 +484,7 @@ int SSLSocket_createContext(networkHandles* net, MQTTClient_SSLOptions* opts)
 
 		if ((rc = SSL_CTX_use_certificate_chain_file(net->ctx, opts->keyStore)) != 1)
 		{
+      Log(TRACE_PROTOCOL, -1, "SSL_CTX_use_certificate_chain_file: %s", opts->keyStore);
 			SSLSocket_error("SSL_CTX_use_certificate_chain_file", NULL, net->socket, rc);
 			goto free_ctx; /*If we can't load the certificate (chain) file then loading the privatekey won't work either as it needs a matching cert already loaded */
 		}	
@@ -500,6 +504,7 @@ int SSLSocket_createContext(networkHandles* net, MQTTClient_SSLOptions* opts)
 			opts->privateKey = NULL;
 		if (rc1 != 1)
 		{
+      Log(TRACE_PROTOCOL, -1, "SSL_CTX_use_PrivateKey_file: %s\n", opts->privateKey);
 			SSLSocket_error("SSL_CTX_use_PrivateKey_file", NULL, net->socket, rc);
 			goto free_ctx;
 		}  
@@ -509,6 +514,7 @@ int SSLSocket_createContext(networkHandles* net, MQTTClient_SSLOptions* opts)
 	{
 		if ((rc = SSL_CTX_load_verify_locations(net->ctx, opts->trustStore, NULL)) != 1)
 		{
+      Log(TRACE_PROTOCOL, -1, "SSL_CTX_load_verify_locations: %s\n", opts->trustStore);
 			SSLSocket_error("SSL_CTX_load_verify_locations", NULL, net->socket, rc);
 			goto free_ctx;
 		}                               
