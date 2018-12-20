@@ -1788,7 +1788,7 @@ static void MQTTAsync_checkTimeouts(void)
 			MQTTAsync_checkDisconnect(m, &m->disconnect);
 
 		/* check connect timeout */
-		if (m->c->connect_state != NOT_IN_PROGRESS && MQTTAsync_elapsed(m->connect.start_time) > (m->connectTimeout * 1000))
+		if (m->c->connect_state != NOT_IN_PROGRESS && MQTTAsync_elapsed(m->connect.start_time) > (m->connectTimeoutMs))
 		{
 			nextOrClose(m, MQTTASYNC_FAILURE, "TCP connect timeout");
 			continue;
