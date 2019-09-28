@@ -3480,6 +3480,8 @@ int MQTTAsync_send(MQTTAsync handle, const char* destinationName, int payloadlen
 	else if (m->c->connected == 0 && (m->createOptions == NULL ||
 		m->createOptions->sendWhileDisconnected == 0 || m->shouldBeConnected == 0))
 		rc = MQTTASYNC_DISCONNECTED;
+	else if (destinationName == NULL)
+		rc = MQTTASYNC_NULL_PARAMETER;
 	else if (!UTF8_validateString(destinationName))
 		rc = MQTTASYNC_BAD_UTF8_STRING;
 	else if (qos < 0 || qos > 2)
