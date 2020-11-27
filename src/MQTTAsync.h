@@ -1227,6 +1227,9 @@ typedef struct
 	const char* password;
 	/**
       * The time interval in seconds to allow a connect to complete.
+      * The time interval in milliseconds to allow a connect to complete.
+      * For backwards compatibility and consistency with the retry intervals
+      * this is considered to be seconds if it is under 1000.
       */
 	int connectTimeout;
 	/**
@@ -1285,14 +1288,24 @@ typedef struct
 	int MQTTVersion;
 	/**
 	  * Reconnect automatically in the case of a connection being lost?
+	  * This retries with exponential backoff starting from the minRetryInterval
+	  * up to the maxRetryInterval, +/- 20% random jitter.
 	  */
 	int automaticReconnect;
 	/**
-	  * Minimum retry interval in seconds.  Doubled on each failed retry.
+	  * Minimum retry interval in milliseconds.  Doubled on each failed retry.
+	  * For backwards compatibility, if the value is under 100,
+	  * it is assumed to be in seconds rather than milliseconds.
+	  * Random jitter is applied to the value with +/- 20%
 	  */
 	int minRetryInterval;
 	/**
-	  * Maximum retry interval in seconds.  The doubling stops here on failed retries.
+	  * Maximum retry interval in milliseconds.  The doubling stops here on failed retries.
+	  * For backwards compatibility, if the value is under 1000,
+	  * it is assumed to be in seconds rather than milliseconds.
+	  * Note: due to random jitter, the actual max time interval could be as much as 20% higher,
+	  * but this will change on each retry.
+	  * e.g. for maxRetryInterval of 60 seconds, the actual wait time could be anywhere from 48 to 72 seconds
 	  */
 	int maxRetryInterval;
 	/**
