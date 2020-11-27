@@ -921,14 +921,14 @@ void MQTTAsync_startConnectRetry(MQTTAsyncs* m)
 		m->lastConnectionFailedTime = MQTTTime_start_clock();
 		if (m->retrying)
 		{
-			m->currentIntervalBase = min(m->currentIntervalBase * 2, m->maxRetryInterval);
+			m->currentIntervalBaseMs = min(m->currentIntervalBaseMs * 2, m->maxRetryIntervalMs);
 		}
 		else
 		{
-			m->currentIntervalBase = m->minRetryInterval;
+			m->currentIntervalBaseMs = m->minRetryIntervalMs;
 			m->retrying = 1;
 		}
-		m->currentInterval = MQTTAsync_randomJitter(m->currentIntervalBase, m->minRetryInterval, m->maxRetryInterval);
+		m->currentIntervalMs = MQTTAsync_randomJitter(m->currentIntervalBaseMs, m->minRetryIntervalMs, m->maxRetryIntervalMs);
 	}
 }
 
@@ -1671,7 +1671,7 @@ static void MQTTAsync_checkTimeouts(void)
 			MQTTAsync_checkDisconnect(m, &m->disconnect);
 
 		/* check connect timeout */
-		if (m->c->connect_state != NOT_IN_PROGRESS && MQTTTime_elapsed(m->connect.start_time) > (ELAPSED_TIME_TYPE)(m->connectTimeout * 1000))
+		if (m->c->connect_state != NOT_IN_PROGRESS && MQTTTime_elapsed(m->connect.start_time) > (ELAPSED_TIME_TYPE)(m->connectTimeoutMs))
 		{
 			nextOrClose(m, MQTTASYNC_FAILURE, "TCP connect timeout");
 			continue;
@@ -1685,7 +1685,7 @@ static void MQTTAsync_checkTimeouts(void)
 
 		if (m->automaticReconnect && m->retrying)
 		{
-			if (m->reconnectNow || MQTTTime_elapsed(m->lastConnectionFailedTime) > (ELAPSED_TIME_TYPE)(m->currentInterval * 1000))
+			if (m->reconnectNow || MQTTTime_elapsed(m->lastConnectionFailedTime) > (ELAPSED_TIME_TYPE)(m->currentIntervalMs))
 			{
 				/* to reconnect put the connect command to the head of the command queue */
 				MQTTAsync_queuedCommand* conn = malloc(sizeof(MQTTAsync_queuedCommand));
