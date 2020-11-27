@@ -625,7 +625,7 @@ int MQTTAsync_connect(MQTTAsync handle, const MQTTAsync_connectOptions* options)
 		m->connect.onFailure5 = options->onFailure5;
 	}
 	m->connect.context = options->context;
-	m->connectTimeout = options->connectTimeout;
+	m->connectTimeoutMs = options->connectTimeout * 1000;
 
 	MQTTAsync_tostop = 0;
 
@@ -660,8 +660,27 @@ int MQTTAsync_connect(MQTTAsync handle, const MQTTAsync_connectOptions* options)
 	if (options->struct_version >= 4)
 	{
 		m->automaticReconnect = options->automaticReconnect;
-		m->minRetryInterval = options->minRetryInterval;
-		m->maxRetryInterval = options->maxRetryInterval;
+		// Old retry time params were in seconds, but we want to support
+		// millisecond min retry intervals.
+		// To remain backwards compatible, if the param is under 100, we
+		// assume it's in seconds, otherwise, milliseconds.
+		if (options->minRetryInterval < 100)
+		{
+			m->minRetryIntervalMs = options->minRetryInterval * 1000;
+		}
+		else
+		{
+			m->minRetryIntervalMs = options->minRetryInterval;
+		}
+		// Similar for max interval, if it's under 1000, we assume seconds
+		if (options->maxRetryInterval < 1000)
+		{
+			m->maxRetryIntervalMs = options->maxRetryInterval * 1000;
+		}
+		else
+		{
+			m->maxRetryIntervalMs = options->maxRetryInterval;
+		}
 	}
 	if (options->struct_version >= 7)
 	{
@@ -821,7 +840,7 @@ int MQTTAsync_connect(MQTTAsync handle, const MQTTAsync_connectOptions* options)
 	m->c->retryInterval = options->retryInterval;
 	m->shouldBeConnected = 1;
 
-	m->connectTimeout = options->connectTimeout;
+	m->connectTimeoutMs = options->connectTimeout * 1000;
 
 	MQTTAsync_freeServerURIs(m);
 	if (options->struct_version >= 2 && options->serverURIcount > 0)
@@ -925,8 +944,8 @@ int MQTTAsync_reconnect(MQTTAsync handle)
 			m->reconnectNow = 1;
 			if (m->retrying == 0)
 			{
-				m->currentIntervalBase = m->minRetryInterval;
-				m->currentInterval = m->minRetryInterval;
+				m->currentIntervalBaseMs = m->minRetryIntervalMs;
+				m->currentIntervalMs = m->minRetryIntervalMs;
 				m->retrying = 1;
 			}
 			rc = MQTTASYNC_SUCCESS;

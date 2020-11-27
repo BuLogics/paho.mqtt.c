@@ -125,16 +125,16 @@ typedef struct MQTTAsync_struct
 	int shouldBeConnected;
 	int noBufferedMessages; /* the current number of buffered (publish) messages for this client */
 
-	/* added for automatic reconnect */
+	/* added for automatic reconnect, intervals are in MS */
 	int automaticReconnect;
-	int minRetryInterval;
-	int maxRetryInterval;
+	int minRetryIntervalMs;
+	int maxRetryIntervalMs;
 	int serverURIcount;
 	char** serverURIs;
-	int connectTimeout;
+	int connectTimeoutMs;
 
-	int currentInterval;
-	int currentIntervalBase;
+	int currentIntervalMs;
+	int currentIntervalBaseMs;
 	START_TIME_TYPE lastConnectionFailedTime;
 	int retrying;
 	int reconnectNow;
